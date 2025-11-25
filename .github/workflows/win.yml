@@ -203,6 +203,7 @@ jobs:
           set OUT=%TBUILD%\%REPO_NAME%\out\Debug
           mkdir artifact
           move %OUT%\Telegram.exe artifact/
+          move %OUT%\Telegram.pdb artifact/
           move %OUT%\Updater.exe artifact/
       - uses: actions/upload-artifact@v5
         name: Upload artifact.
