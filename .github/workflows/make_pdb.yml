@@ -1,9 +1,10 @@
-name: Build Telegram Desktop
+name: Windows.
 
 on:
   workflow_dispatch:
 
 jobs:
+
   windows:
     name: Windows
     runs-on: windows-latest
@@ -43,12 +44,13 @@ jobs:
         shell: bash
         run: |
           DOCPATH=$TBUILD/$REPO_NAME/docs/building-win.md
+          [ "${{ matrix.arch }}" != Win32 ] && DOCPATH=$TBUILD/$REPO_NAME/docs/building-win-${{ matrix.arch }}.md
           SDK="$(grep "SDK version" $DOCPATH | sed -r 's/.*\*\*(.*)\*\* SDK version.*/\1/')"
           echo "SDK=$SDK" >> $GITHUB_ENV
 
-          echo "$(sha256sum $TBUILD/$REPO_NAME/$PREPARE_PATH | awk '{ print \$1 }')" >> CACHE_KEY.txt
+          echo "$(sha256sum $TBUILD/$REPO_NAME/$PREPARE_PATH | awk '{ print $1 }')" >> CACHE_KEY.txt
           echo "$SDK" >> CACHE_KEY.txt
-          echo "CACHE_KEY=$(sha256sum CACHE_KEY.txt | awk '{ print \$1 }')" >> $GITHUB_ENV
+          echo "CACHE_KEY=$(sha256sum CACHE_KEY.txt | awk '{ print $1 }')" >> $GITHUB_ENV
 
           echo "Configurate git for cherry-picks."
           git config --global user.email "you@example.com"
@@ -94,11 +96,34 @@ jobs:
         run: |
           ARTIFACT_NAME="Telegram"
 
-          ARCH="x64"
-          echo "TDESKTOP_BUILD_ARCH=$ARCH" >> $GITHUB_ENV
+          ARCH=""
+          if [ -n "${{ matrix.arch }}" ]; then
+            case "${{ matrix.arch }}" in
+              Win32) ARCH="x86";;
+              *) ARCH="${{ matrix.arch }}";;
+            esac
+            echo "Architecture from matrix: $ARCH"
+            ARTIFACT_NAME="${ARTIFACT_NAME}_${{ matrix.arch }}"
+          fi
 
           GENERATOR=""
+          if [ -n "${{ matrix.generator }}" ]; then
+            GENERATOR="-G \"${{ matrix.generator }}\""
+            echo "Generator from matrix: $GENERATOR"
+            ARTIFACT_NAME="${ARTIFACT_NAME}_${{ matrix.generator }}"
+          fi
           echo "TDESKTOP_BUILD_GENERATOR=$GENERATOR" >> $GITHUB_ENV
+
+          [ -n "$GENERATOR" ] && ARCH=""
+          echo "TDESKTOP_BUILD_ARCH=$ARCH" >> $GITHUB_ENV
+
+          DEFINE=""
+          if [ -n "${{ matrix.defines }}" ]; then
+            DEFINE="-D ${{ matrix.defines }}=ON"
+            echo "Define from matrix: $DEFINE"
+            ARTIFACT_NAME="${ARTIFACT_NAME}_${{ matrix.defines }}"
+          fi
+          echo "TDESKTOP_BUILD_DEFINE=$DEFINE" >> $GITHUB_ENV
 
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
@@ -124,10 +149,11 @@ jobs:
           %TDESKTOP_BUILD_GENERATOR% ^
           %TDESKTOP_BUILD_ARCH% ^
           %TDESKTOP_BUILD_API% ^
-          -D CMAKE_BUILD_TYPE=Debug ^
+          -D CMAKE_CONFIGURATION_TYPES=Debug ^
           -D CMAKE_COMPILE_WARNING_AS_ERROR=ON ^
           -D DESKTOP_APP_DISABLE_AUTOUPDATE=OFF ^
-          -D DESKTOP_APP_DISABLE_CRASH_REPORTS=OFF
+          -D DESKTOP_APP_DISABLE_CRASH_REPORTS=OFF ^
+          %TDESKTOP_BUILD_DEFINE%
 
           cmake --build ..\out --config Debug --parallel
 
@@ -138,8 +164,6 @@ jobs:
           mkdir artifact
           move %OUT%\Telegram.exe artifact/
           move %OUT%\Telegram.pdb artifact/
-          move %OUT%\Updater.exe artifact/
-
       - uses: actions/upload-artifact@v5
         name: Upload artifact.
         if: (env.UPLOAD_ARTIFACT == 'true') || (github.ref == 'refs/heads/nightly')
